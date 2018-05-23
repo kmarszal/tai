@@ -2,6 +2,7 @@ package tai;
 
 import java.util.logging.Logger;
 
+import com.google.common.collect.ImmutableMap;
 import com.netflix.astyanax.AstyanaxContext;
 import com.netflix.astyanax.Keyspace;
 import com.netflix.astyanax.MutationBatch;
@@ -11,24 +12,23 @@ import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
 import com.netflix.astyanax.connectionpool.impl.CountingConnectionPoolMonitor;
 import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
-import com.netflix.astyanax.model.Column;
 import com.netflix.astyanax.model.ColumnFamily;
 import com.netflix.astyanax.model.ColumnList;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 
-public class UserManager {
+public class UserDAO {
 	private static final ColumnFamily<String, String> CF_USER_INFO =
 			  new ColumnFamily<String, String>(
 					    "Users",              // Column Family Name
 					    StringSerializer.get(),   // Key Serializer
 					    StringSerializer.get());  // Column Serializer
-    private static final Logger LOGGER = Logger.getLogger(ProfilingFilter.class.getName());
 	
-    //private KeyspaceManager keyspaceManager;
+    private static final Logger LOGGER = Logger.getLogger(UserDAO.class.getName());
+	
 	private Keyspace keyspace;
 	
-	public UserManager() throws ConnectionException {
+	public UserDAO() throws ConnectionException {
 		AstyanaxContext<Keyspace> context = new AstyanaxContext.Builder()
 		    .forCluster("Test Cluster")
 		    .forKeyspace("ks")
@@ -46,8 +46,9 @@ public class UserManager {
 		    .buildKeyspace(ThriftFamilyFactory.getInstance());
 		context.start();
 		this.keyspace = context.getClient();
-		/*
-		//create keyspace
+	}
+	
+	private void createKeyspaceAndColumnFamily() throws ConnectionException {
 		keyspace.createKeyspace(ImmutableMap.<String, Object>builder()
 			    .put("strategy_options", ImmutableMap.<String, Object>builder()
 			        .put("replication_factor", "1")
@@ -56,53 +57,55 @@ public class UserManager {
 			        .build()
 			     );
 		
-		//create column family
 		keyspace.createColumnFamily(CF_USER_INFO, null);
-		*/
 	}
 	
-	public void insertUser() {
+	public boolean insertUser(User user) {
 		MutationBatch m = keyspace.prepareMutationBatch();
 
-		m.withRow(CF_USER_INFO, "111")
-		  .putColumn("name", "john", null)
-		  .putColumn("password", "smith", null)
-		  .putColumn("type", "user", null);
+		m.withRow(CF_USER_INFO, user.getName())
+		  .putColumn("password", user.getPassword(), null)
+		  .putColumn("type", user.getType(), null);
 
 		try {
-		  OperationResult<Void> result = m.execute();
-		  LOGGER.info("inserted");
+		  m.execute();
+		  return true;
 		} catch (ConnectionException e) {
 			e.printStackTrace();
 		}
+		return false;
 	}
 	
-	public void getUser() {
+	public User getUser(String name) {
 		OperationResult<ColumnList<String>> result;
+		User user = null;
 		try {
 			result = keyspace.prepareQuery(CF_USER_INFO)
-			    .getKey("111")
-			    .execute();
-			
-			for (Column<String> c : result.getResult()) {
-			  LOGGER.info(c.getStringValue());
-			}
+					.getRow(name)
+				    .execute();
+			user = new User(name, 
+					result.getResult().getStringValue("password", ""), 
+					result.getResult().getStringValue("type", ""));
 		} catch (ConnectionException e) {
 			e.printStackTrace();
 		}
+		return user;
 	}
 	
-	public void deleteUser() {
+	public boolean deleteUser(User user) {
 		MutationBatch m = keyspace.prepareMutationBatch();
 
-		m.withRow(CF_USER_INFO, "111").delete();
-
+		m.withRow(CF_USER_INFO, user.getName()).delete();
+			
 		try {
-		  OperationResult<Void> result = m.execute();
-		  LOGGER.info("deleted");
+			m.execute();
+		  	LOGGER.info("User " + user.getName() + " deleted successfully");
+		  	return true;
 		} catch (ConnectionException e) {
+			LOGGER.info("User " + user.getName() + " not deleted");
 			e.printStackTrace();
 		}
+		return false;
 	}
 	
 	public void printHello() {
@@ -110,12 +113,13 @@ public class UserManager {
 	}
 	
 	public static void main(String args[]) {
-		UserManager userManager;
+		UserDAO userDAO;
 		try {
-			userManager = new UserManager();
-			userManager.insertUser();
-			userManager.getUser();
-			userManager.deleteUser();
+			userDAO = new UserDAO();
+			userDAO.insertUser(new User("name","pass","user"));
+			User user = userDAO.getUser("name");
+			LOGGER.info(user.getName() + " " + user.getPassword() + " " + user.getType());
+			userDAO.deleteUser(user);
 		} catch (ConnectionException e) {
 			e.printStackTrace();
 		}

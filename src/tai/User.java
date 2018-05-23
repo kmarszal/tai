@@ -1,17 +1,27 @@
 package tai;
 
 public class User {
-	private Long id;
-	
 	private String name;
 	
 	private String password;
 	
 	private String type;
 	
-	User(String name, String password){
+	public String getName() {
+		return name;
+	}
+	
+	public String getPassword() {
+		return password;
+	}
+	
+	public String getType() {
+		return type;
+	}
+	
+	User(String name, String password, String type){
 		this.name = name;
 		this.password = password;
-		this.type = "user";
+		this.type = type;
 	}
 }
